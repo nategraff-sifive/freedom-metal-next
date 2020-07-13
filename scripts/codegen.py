@@ -12,8 +12,9 @@ import sys
 import jinja2
 import pydevicetree
 
-DEFAULT_TEMPLATE_PATHS = [
-    "templates",
+DEFAULT_SOURCE_PATHS = [
+    ".",
+    "sifive-blocks",
 ]
 
 def parse_arguments(argv):
@@ -27,12 +28,17 @@ def parse_arguments(argv):
             required=True,
             help="The path to the directory to output generated code")
 
-    arg_parser.add_argument("--template-paths",
+    arg_parser.add_argument("--source-paths",
             nargs='*',
-            default=DEFAULT_TEMPLATE_PATHS,
+            default=DEFAULT_SOURCE_PATHS,
             help="The paths to look for template")
 
-    return arg_parser.parse_args(argv)
+    args =  arg_parser.parse_args(argv)
+
+    args.template_paths = [ d + "/templates" for d in args.source_paths ]
+
+    return args
+
 
 def get_template(template, args):
     env = jinja2.Environment(
@@ -145,13 +151,31 @@ def node_to_dict(node, dts):
 
     return d
 
-def render_templates(template_paths, args, template_data):
+def get_templates(template_paths):
     templates = []
-
     for d in template_paths:
         templates += [g.replace(d + "/", "") for g in glob.iglob("{}/**/*.j2".format(d), recursive=True)]
 
-    for template in templates:
+    return templates
+
+def get_c_sources(args):
+    sources = []
+    for d in args.source_paths:
+        sources += [g for g in glob.glob("{}/src/**/*.c".format(d), recursive=True)]
+    sources += [t.replace(".j2", "") for t in get_templates(args.template_paths) if ".c" in t]
+
+    return sources
+
+def get_asm_sources(args):
+    sources = []
+    for d in args.source_paths:
+        sources += [g for g in glob.glob("{}/src/**/*.S".format(d), recursive=True)]
+    sources += [t.replace(".j2", "") for t in get_templates(args.template_paths) if ".S" in t]
+
+    return sources
+
+def render_templates(args, template_data):
+    for template in get_templates(args.template_paths):
         output_file = "{}/{}".format(args.output_dir, template)
         output_file = output_file.replace(".j2", "")
         dirname = os.path.dirname(output_file)
@@ -210,6 +234,11 @@ def main():
         'global_interrupts' : global_interrupts(dts),
         'devices' : dict(),
         'default_drivers' : dict(),
+        'devicetree_path' : args.dts,
+        'c_sources' : get_c_sources(args),
+        'asm_sources' : get_asm_sources(args),
+        'templates' : get_templates(args.source_paths),
+        'source_paths' : args.source_paths,
     }
 
     for api in devices:
@@ -230,7 +259,7 @@ def main():
     with open("{}/template_data.log".format(args.output_dir), "w") as log:
         log.write(pprint.pformat(template_data))
 
-    render_templates(args.template_paths, args, template_data)
+    render_templates(args, template_data)
 
 if __name__ == "__main__":
     main()
