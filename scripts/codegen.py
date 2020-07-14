@@ -50,7 +50,7 @@ def get_template(template, args):
     return env.get_template(template)
 
 def to_snakecase(s):
-    return s.lower().replace(',', '_').replace('-', '_')
+    return s.lower().replace(',', '_').replace('-', '_').replace('.', '_')
 
 def rootname(path):
     return os.path.splitext(os.path.basename(path))[0]
@@ -128,25 +128,53 @@ def global_interrupts(dts):
 
     return global_interrupts
 
+def resolve_phandles(dts):
+    import pdb
+
+    for node in dts.all_nodes():
+        for prop in node.properties:
+            if prop.name == "interrupt-parent":
+                phandle = node.get_field("interrupt-parent")
+                if isinstance(phandle, int):
+                    parent = dts.filter(lambda n: n.get_field("phandle") == phandle)[0]
+                    del node.properties[node.properties.index(prop)]
+                    node.properties.append(pydevicetree.ast.Property.from_dts("interrupt-parent = <&{" + parent.get_path() + "}>;"))
+            if prop.name == "interrupts-extended":
+                int_ext = node.get_fields("interrupts-extended")
+                if isinstance(int_ext[0], int):
+                    property_string = "interrupts-extended = <"
+                    for phandle, irq in zip(int_ext[::2], int_ext[1::2]):
+                        parent = dts.filter(lambda n: n.get_field("phandle") == phandle)[0]
+                        property_string += "&{" + parent.get_path() + "} " + str(irq) + " "
+                    property_string += ">;"
+                    del node.properties[node.properties.index(prop)]
+                    node.properties.append(pydevicetree.ast.Property.from_dts(property_string))
+
+def is_reference(x):
+    return isinstance(x, (pydevicetree.ast.LabelReference, pydevicetree.ast.PathReference))
+
 def node_to_dict(node, dts):
     d = dict()
     for prop in node.properties:
         key = to_snakecase(prop.name)
 
         values = []
-        if key == "reg" and isinstance(prop.values[0], pydevicetree.ast.LabelReference):
-            # When the reg property looks like
-            #  reg = <&aon 0x70 &aon 0x73>;
-            # The pairs of Node References and offsets means
-            #  1. Look up the control registers of the referenced node
-            #  2. Add the offset to the base address
-            references = prop.values[0::2] # [&aon, &aon]
-            offsets = prop.values[1::2]    # [0x70, 0x7C]
-            for ref, offset in zip(references, offsets):
-                values.append(dts.get_by_reference(ref).get_reg()[0][0] + offset)
+        if key == "reg":
+            if is_reference(prop.values[0]):
+                # When the reg property looks like
+                #  reg = <&aon 0x70 &aon 0x73>;
+                # The pairs of Node References and offsets means
+                #  1. Look up the control registers of the referenced node
+                #  2. Add the offset to the base address
+                references = prop.values[0::2] # [&aon, &aon]
+                offsets = prop.values[1::2]    # [0x70, 0x7C]
+                for ref, offset in zip(references, offsets):
+                    values.append([dts.get_by_reference(ref).get_reg()[0][0] + offset, 0])
+            else:
+                values = node.get_reg()
         else:
             for value in prop.values:
-                if isinstance(value, pydevicetree.ast.LabelReference):
+                if is_reference(value):
                     values.append(node_to_dict(dts.get_by_reference(value), dts))
                 else:
                     values.append(value)
@@ -164,7 +192,10 @@ def node_to_dict(node, dts):
     if 'reg_names' in d:
         regs = dict()
         for idx, name in enumerate(d['reg_names']):
-            regs[name] = d['reg'][idx]
+            if is_reference(node.get_field("reg")):
+                regs[name] = d['reg'][idx]
+            else:
+                regs[name] = node.get_reg()[idx]
         d['regs_by_name'] = regs
 
     return d
@@ -247,6 +278,8 @@ def main():
 
     dts = pydevicetree.Devicetree.parseFile(
             args.dts, followIncludes=True)
+
+    resolve_phandles(dts)
 
     # Get list of supported devices from template manifests
     devices = get_devices_from_manifests(args.template_paths)
