@@ -94,13 +94,18 @@ def global_interrupts(dts):
 
     for node in plic_sources:
         for source_id, irq_id in enumerate(node.get_fields("interrupts")):
-            irqs.append({
+            elt = {
                 'source': {
                     'compatible': node.get_field("compatible"),
                     'id': source_id,
                 },
                 'id': irq_id,
-            })
+            }
+            for e in irqs:
+                if elt['source'] == e['source']:
+                    break
+            else:
+                irqs.append(elt)
 
     irqs.sort(key=lambda x: x['id'])
 
