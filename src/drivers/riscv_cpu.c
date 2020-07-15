@@ -63,6 +63,16 @@ int metal_cpu_disable_interrupts(struct metal_cpu cpu) {
     __asm__ volatile("csrc mstatus, %0" :: "r"(METAL_MSTATUS_MIE));
 }
 
+int metal_cpu_enable_timer_interrupt(struct metal_cpu cpu) __attribute__((weak));
+int metal_cpu_enable_timer_interrupt(struct metal_cpu cpu) {
+    __asm__ volatile("csrs mie, %0" :: "r"(1 << METAL_LOCAL_INTERRUPT_TMR));
+}
+
+int metal_cpu_disable_timer_interrupt(struct metal_cpu cpu) __attribute__((weak));
+int metal_cpu_disable_timer_interrupt(struct metal_cpu cpu) {
+    __asm__ volatile("csrc mie, %0" :: "r"(1 << METAL_LOCAL_INTERRUPT_TMR));
+}
+
 int metal_cpu_enable_ipi(struct metal_cpu cpu) __attribute__((weak));
 int metal_cpu_enable_ipi(struct metal_cpu cpu) {
     __asm__ volatile("csrs mie, %0" :: "r"(1 << METAL_LOCAL_INTERRUPT_SW));
