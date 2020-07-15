@@ -1,8 +1,8 @@
 /* Copyright 2020 SiFive, Inc */
 /* SPDX-License-Identifier: Apache-2.0 */
 
-#ifndef METAL__DRIVERS__RISCV_CPU_INTC_H
-#define METAL__DRIVERS__RISCV_CPU_INTC_H
+#ifndef METAL__DRIVERS__RISCV_CPU_H
+#define METAL__DRIVERS__RISCV_CPU_H
 
 #include <metal/cpu.h>
 
